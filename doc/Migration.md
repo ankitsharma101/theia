@@ -9,6 +9,17 @@ Please see the latest version (`master`) for the most up-to-date information. Pl
 
 ### General
 
+_AI Configuration View_:
+
+The AI Configuration view (`@theia/ai-ide`) has been reworked from a tabbed dock panel into a master–detail tree driven by a new public contribution point, `AiConfigurationCategory`.
+
+- **New package dependency edges:** `@theia/ai-ide` and `@theia/ai-mcp` now depend on `@theia/ai-core-ui`, which hosts the contribution point (`AiConfigurationCategory`, `AiConfigurationCategoryRegistry`), the shared selection model (`AiConfigurationSelectionModel`), and the shared page primitives (`AiSettingsRow`, `AiConfigurationSection`, `SinglePageCategoryRenderer`, `CollectionCategoryRenderer`, …). If you consume the AI configuration UI, add `@theia/ai-core-ui` to your dependencies. `@theia/ai-core-ui` itself now depends on `@theia/preferences`, for the Settings UI's "Open settings.json" command (`PreferencesCommands.OPEN_PREFERENCES_JSON_TOOLBAR`) that the setting rows delegate to for complex values.
+- **Removed widgets:** the per-tab widgets and their `WidgetFactory` registrations were removed — `AIAgentConfigurationWidget`, `AIVariableConfigurationWidget`, `ModelAliasesConfigurationWidget`, `AIToolsConfigurationWidget`, `AISkillsConfigurationWidget`, `AITokenUsageConfigurationWidget`, `AIPromptFragmentsConfigurationWidget` (all `@theia/ai-ide`) and `AIMCPConfigurationWidget` (`@theia/ai-mcp`). The dead base classes (`AIConfigurationBaseWidget`, `AICardGridConfigurationWidget`, `AI{List,Table,Hierarchical}ConfigurationWidget`) were removed as well. Each surface now lives in an `AiConfigurationCategory` contribution with a renderer built from the shared primitives.
+- **Removed components and API:** the widget-era building blocks `ConfigurationSection`, `ExpandableSection` and `PromptVariantRenderer` (`template-settings-renderer.tsx`) were removed from `@theia/ai-ide`; use `AiConfigurationSection` and `VariantSetCard` from `@theia/ai-core-ui` instead. `MCPServerEditor.openEditServer` was dropped from the interface — the MCP server category owns the edit flow now; `openAddServer` and `installFromEntry` are unchanged.
+- **Adding custom categories:** adopters that added their own AI configuration tabs should now register an `AiConfigurationCategory` (bind it to the `AiConfigurationCategory` service identifier). Set `contributed: true` to have it grouped under "Contributed by extensions". See `examples/api-samples` (`SampleChatToolbarConfigurationCategory`) for a minimal end-to-end example.
+- **Selection:** category/item navigation now routes through `AiConfigurationSelectionModel` (`@theia/ai-core-ui`). `AIConfigurationSelectionService` (`@theia/ai-ide`) is retained for the agent/alias domain events it still carries.
+- **Stable entry points:** the command ids `aiConfiguration:open` (`OPEN_AI_CONFIG_VIEW`) and `aiConfiguration:openTools` (`OPEN_AI_CONFIG_VIEW_TOOLS`) and the chat-view toolbar button are unchanged. `OPEN_AI_CONFIG_VIEW(tabId)` still accepts the legacy per-tab widget ids and maps them onto the corresponding category ids.
+
 _ESBuild_:
 
 In addition to `webpack`, Theia is now also supporting [`ESBuild`](https://esbuild.github.io/) for bundling the application (frontend+backend). We will soon deprecate and then remove the `webpack` bundling option. Adopters can already use the ESBuild based bundler simply by deleting their `webpack.config.js`, which will automatically generate an `esbuild.mjs` file upon the next build.
@@ -100,6 +111,33 @@ For example, in an `electron-builder` configuration, ensure the `lib/backend/she
 ```
 
 The `lib/**/*` glob already covers `lib/backend/shell-integrations/`. If you use a more restrictive `files` pattern, make sure `lib/backend/shell-integrations/**/*` is explicitly included, as `ShellIntegrationInjector` resolves these scripts relative to `__dirname` (i.e. `lib/backend/`).
+
+### v1.75.0
+
+#### React 19 and the automatic JSX runtime
+
+Theia now requires `react`/`react-dom` `^19` and React 18 is no longer supported.
+The `@theia/core` peer dependency ranges for `react`, `react-dom`, `@types/react`, and `@types/react-dom` are narrowed to `^19.0.0`, so all four need to be bumped.
+Since v1.74.0 `react`/`react-dom` are peer dependencies instead of direct dependencies of `@theia/core`.
+Thus, depending on your package manager and its settings, you might need to add them as explicit dependencies of your product.
+
+Upgrading React itself is covered by the [React 19 upgrade guide](https://react.dev/blog/2024/04/25/react-19-upgrade-guide).
+The change most likely to affect extension code is that `useRef` no longer has a zero-argument overload, so `React.useRef<T | undefined>()` becomes `React.useRef<T | undefined>(undefined)`.
+
+All Theia packages are now compiled with the automatic JSX runtime:
+
+```json
+"jsx": "react-jsx",
+"jsxImportSource": "@theia/core/shared/react"
+```
+
+`@theia/core/shared/react/jsx-runtime` and `@theia/core/shared/react/jsx-dev-runtime` are new re-exports, so the generated JSX calls still resolve to the single React instance shared by `@theia/core`.
+The only exception is `@theia/core`: it cannot import its own re-export, so `packages/core/tsconfig.json` overrides `jsxImportSource` with `react`, which resolves to the same module.
+
+Adopters do not have to switch, but if you want the same setup in your own extensions:
+
+- set `jsx` and `jsxImportSource` as above in your `tsconfig.json` (if you use `jsx: "react-jsxdev"`, the `jsx-dev-runtime` re-export is used instead)
+- remove `import * as React from '@theia/core/shared/react'` from files that only needed it for JSX. Keep the import wherever `React.*` types or APIs are used (`React.ReactNode`, `React.FC`, `React.MouseEvent`, hooks, …). With `noUnusedLocals` enabled the compiler reports the now-obsolete imports.
 
 ### v1.74.0
 
